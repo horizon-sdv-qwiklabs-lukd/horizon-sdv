@@ -66,10 +66,10 @@ pipelineJob('Android/Environment/ABFS/Server Administration/Destroy Spanner Inst
       scm {
         git {
           remote {
-            url("${HORIZON_GITHUB_URL}")
-            credentials('jenkins-github-creds')
+            url("${HORIZON_SCM_URL}")
+            credentials('jenkins-scm-creds')
           }
-          branch("*/${HORIZON_GITHUB_BRANCH}")
+          branch("*/${HORIZON_SCM_BRANCH}")
         }
       }
       scriptPath('workloads/android/pipelines/environment/abfs/server_administration/destroy_spanner_instance/Jenkinsfile')

@@ -50,6 +50,14 @@ variable "arm64_subnetwork" {
   type        = string
 }
 
+variable "pods_range" {
+  type = string
+}
+
+variable "services_range" {
+  type = string
+}
+
 variable "arm64_pods_range" {
   type = string
 }
@@ -57,3 +65,4 @@ variable "arm64_pods_range" {
 variable "arm64_services_range" {
   type = string
 }
+

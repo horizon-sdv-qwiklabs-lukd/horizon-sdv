@@ -52,10 +52,10 @@ pipelineJob('Android/Environment/Delete Cuttlefish VM Instance') {
       scm {
         git {
           remote {
-            url("${HORIZON_GITHUB_URL}")
-            credentials('jenkins-github-creds')
+            url("${HORIZON_SCM_URL}")
+            credentials('jenkins-scm-creds')
           }
-          branch("*/${HORIZON_GITHUB_BRANCH}")
+          branch("*/${HORIZON_SCM_BRANCH}")
         }
       }
       scriptPath('workloads/android/pipelines/environment/delete_cf_vm_instance/Jenkinsfile')

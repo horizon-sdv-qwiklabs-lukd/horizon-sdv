@@ -15,9 +15,43 @@
 # Description
 # Configuration file containing variables for the "sdv-gke-apps" module.
 
-variable "github_auth_method" {
-  description = "Authentication method for Argo CD: 'app' or 'pat'."
+# SCM Configuration
+variable "scm_type" {
+  description = "SCM type: 'github' or 'git'"
   type        = string
+}
+
+variable "scm_auth_method" {
+  description = "SCM auth method: 'app' or 'userpass'"
+  type        = string
+}
+
+variable "scm_repo_url" {
+  description = "Full SCM repository URL"
+  type        = string
+}
+
+variable "scm_repo_branch" {
+  description = "SCM repository branch"
+  type        = string
+}
+
+variable "scm_repo_owner" {
+  description = "SCM repository owner (for GitHub only)"
+  type        = string
+  default     = ""
+}
+
+variable "scm_repo_name" {
+  description = "SCM repository name (for GitHub only)"
+  type        = string
+  default     = ""
+}
+
+variable "scm_username" {
+  description = "SCM username"
+  type        = string
+  default     = "git"
 }
 
 variable "es_namespace" {
@@ -63,26 +97,6 @@ variable "argocd_application_name" {
   description = "Name of the Argo CD Application"
   type        = string
   default     = "horizon-sdv"
-}
-
-variable "github_repo_url" {
-  description = "The URL of the GitHub repository."
-  type        = string
-}
-
-variable "github_repo_branch" {
-  description = "The target branch for Argo CD."
-  type        = string
-}
-
-variable "github_repo_owner" {
-  description = "Define the GitHub repository name"
-  type        = string
-}
-
-variable "github_repo_name" {
-  description = "Define the GitHub repository name"
-  type        = string
 }
 
 variable "domain_name" {

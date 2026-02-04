@@ -17,6 +17,17 @@
 # project ID, region, zone, network etc. Set up service accounts and
 # the required secrets.
 
+# Convert GitHub App private key to PKCS#8 format (only when using app auth)
+data "external" "pkcs8_converter" {
+  count = var.scm_auth_method == "app" ? 1 : 0
+
+  program = ["bash", "-c", "jq -r .key | openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt | jq -Rs '{result: .}'"]
+
+  query = {
+    key = var.sdv_github_app_private_key
+  }
+}
+
 resource "random_password" "pw" {
   for_each = {
     for k in local.ids_to_generate : k => local.secret_password_specs[k]
@@ -38,8 +49,7 @@ module "cuttlefish_key" {
   source             = "../modules/sdv-ssh-keypair"
   name               = "my_cuttlefish_vm_ssh_key"
   dir                = "./cuttlefish_vm_keys"
-  algorithm          = "RSA"
-  rsa_bits           = 4096
+  algorithm          = "ED25519"
   write_files        = true
   convert_to_openssh = true
 }
@@ -55,40 +65,13 @@ module "gerrit_admin_key" {
   convert_to_openssh = true
 }
 
-# Validate GitHub secrets
-resource "terraform_data" "validate_github_auth" {
+# Validate SCM configuration
+resource "terraform_data" "validate_scm_config" {
   lifecycle {
+    # GitHub App requires scm_type = "github"
     precondition {
-      condition     = var.github_auth_method != "pat" || (var.github_auth_method == "pat" && length(var.sdv_github_pat) > 0 && var.sdv_github_pat != "<OPTIONAL>")
-      error_message = "Selected 'pat' auth but 'sdv_github_pat' is empty or invalid."
-    }
-
-    precondition {
-      condition     = var.github_auth_method != "app" || (var.github_auth_method == "app" && length(var.sdv_github_app_id) > 0 && var.sdv_github_app_id != "<OPTIONAL>")
-      error_message = "Selected 'app' auth but 'sdv_github_app_id' is empty or invalid."
-    }
-
-    precondition {
-      condition     = var.github_auth_method != "app" || (var.github_auth_method == "app" && length(var.sdv_github_app_install_id) > 0 && var.sdv_github_app_install_id != "<OPTIONAL>")
-      error_message = "Selected 'app' auth but 'sdv_github_app_install_id' is empty or invalid."
-    }
-
-    precondition {
-      condition = var.github_auth_method != "app" || (
-        var.github_auth_method == "app" &&
-        length(var.sdv_github_app_private_key) > 50 &&
-        !can(regex("paste content here", var.sdv_github_app_private_key))
-      )
-      error_message = "Selected 'app' auth but 'sdv_github_app_private_key' set to default sample. Replace it with your actual private key."
-    }
-
-    precondition {
-      condition = var.github_auth_method != "app" || (
-        var.github_auth_method == "app" &&
-        length(var.sdv_github_app_private_key_pkcs8) > 50 &&
-        !can(regex("paste content here", var.sdv_github_app_private_key_pkcs8))
-      )
-      error_message = "Selected 'app' auth but 'sdv_github_app_private_key_pkcs8' set to default sample. Jenkins requires correct key format."
+      condition     = var.scm_auth_method != "app" || (var.scm_auth_method == "app" && var.scm_type == "github")
+      error_message = "GitHub App authentication (scm_auth_method='app') can only be used with scm_type='github'."
     }
   }
 }
@@ -96,9 +79,14 @@ resource "terraform_data" "validate_github_auth" {
 module "base" {
   source = "../modules/base"
 
-  github_repo_owner  = var.sdv_github_repo_owner
-  github_repo_name   = var.sdv_github_repo_name
-  github_auth_method = var.github_auth_method
+  # SCM configuration
+  scm_type        = var.scm_type
+  scm_auth_method = var.scm_auth_method
+  scm_repo_url    = var.scm_repo_url
+  scm_repo_branch = var.scm_repo_branch
+  scm_repo_owner  = local.scm_repo_owner
+  scm_repo_name   = local.scm_repo_name
+  scm_username    = var.scm_username
 
   # The project is used by provider.tf to define the GCP project
   sdv_project  = var.sdv_gcp_project_id
@@ -155,7 +143,7 @@ module "base" {
 
   github_env_name         = var.sdv_env_name
   github_domain_name      = var.sdv_root_domain
-  github_repo_branch      = var.sdv_github_repo_branch
+  github_repo_branch      = var.scm_repo_branch
   gcp_backend_bucket_name = var.sdv_gcp_backend_bucket
 
   sdv_network_egress_router_name = "sdv-egress-internet"
@@ -169,7 +157,6 @@ module "base" {
   sdv_ssl_certificate_name   = "horizon-sdv"
   sdv_ssl_certificate_domain = "${var.sdv_env_name}.${var.sdv_root_domain}"
 
-  sdv_abfs_license_key_b64 = var.sdv_abfs_license_key_b64
   #
   # To create a new SA with access from GKE to GC, add a new saN block.
   #
@@ -360,10 +347,7 @@ module "base" {
 
   #
   # Define the secrets and values and gke access rules
-  sdv_gcp_secrets_map = merge(
-    local.sdv_gcp_common_secrets_map,
-    var.github_auth_method == "app" ? local.sdv_gcp_github_app_secrets_map : local.sdv_gcp_github_pat_secrets_map
-  )
+  sdv_gcp_secrets_map = local.sdv_gcp_secrets_map
 
   sdv_gcp_parameters_map = {
     p1 = {
@@ -404,20 +388,23 @@ module "base" {
     p8 = {
       parameter_id         = "sdv_github_repo_name"
       parameter_version_id = "v1"
-      value                = base64encode(var.sdv_github_repo_name)
+      value                = base64encode(local.scm_repo_name)
     }
     p9 = {
       parameter_id         = "sdv_github_repo_branch"
       parameter_version_id = "v1"
-      value                = base64encode(var.sdv_github_repo_branch)
+      value                = base64encode(var.scm_repo_branch)
     }
     p10 = {
       parameter_id         = "sdv_github_auth_method"
       parameter_version_id = "v1"
-      value                = base64encode(var.github_auth_method)
+      value                = base64encode(var.scm_auth_method)
     }
   }
 
   #ARM64_ENABLEMENT
   enable_arm64 = var.enable_arm64
+
+  # DNS Configuration
+  sdv_dns_dnssec_enabled = var.sdv_dns_dnssec_enabled
 }

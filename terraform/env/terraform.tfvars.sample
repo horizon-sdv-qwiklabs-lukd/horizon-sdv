@@ -1,17 +1,3 @@
-# Copyright (c) 2026 Accenture, All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
 # =========================================================================
 #  DO NOT ENTER SECRETS IN THIS FILE. THIS IS A SAMPLE FILE
 #  
@@ -28,25 +14,47 @@ sdv_gcp_zone             = "europe-west1-d"
 sdv_gcp_compute_sa_email = "<REQUIRED>"
 sdv_gcp_backend_bucket   = "<REQUIRED>"
 
-#  Environment Metadata 
-sdv_env_name        = "<REQUIRED>"
-sdv_root_domain     = "<REQUIRED>"
+# Environment Metadata 
+sdv_env_name    = "<REQUIRED>"
+sdv_root_domain = "<REQUIRED>"
 
-# GitHub Integration
-sdv_github_repo_owner  = "<REQUIRED>"
-sdv_github_repo_name   = "<REQUIRED>"
-sdv_github_repo_branch = "<REQUIRED>"
+# ========================================
+# SCM Configuration (Source Code Management)
+# ========================================
 
-# GitHub Auth type
-# Select `app` or `pat`
-github_auth_method = "<REQUIRED>"
+# SCM Type
+# - "github": Use when hosting on GitHub (enables GitHub-specific features like PR discovery)
+# - "git": Use for any other Git server (Gerrit, GitLab, Gitea, Bitbucket, self-hosted Git)
+scm_type = "github"
 
-# GitHub Personal Access Token (PAT)
-# Replace with actual value if selected auth type is `pat`
-sdv_github_pat         = "<OPTIONAL>"
+# Authentication Method
+# - "app": GitHub App authentication (only available with scm_type="github")
+# - "userpass": Username/Password or token (works with any Git server via HTTP basic auth)
+# - "none": Public repository (no authentication required)
+scm_auth_method = "userpass"
 
-# GitHub App Credentials
-# Replace with actual value if selected auth type is `app`
+# Repository Configuration
+# GitHub example: https://github.com/owner/repo
+# Gerrit example: https://gerrit.example.com/a/project-name
+# GitLab example: https://gitlab.example.com/group/project
+# Gitea example: https://gitea.example.com/owner/repo
+scm_repo_url = "https://github.com/owner/repo"
+scm_repo_branch = "main"
+
+# Username/Password Authentication (only when scm_auth_method = "userpass")
+# For GitHub with PAT:
+#   scm_username = "git"
+#   scm_password = "ghp_xxxxxxxxxxxxxxxxxxxx"
+# For Gerrit:
+#   scm_username = "your-gerrit-username"
+#   scm_password = "your-http-password"
+# For GitLab:
+#   scm_username = "oauth2"
+#   scm_password = "glpat-xxxxxxxxxxxxxxxxxxxx"
+scm_username = "git"
+scm_password = "<REQUIRED>"
+
+# GitHub App Authentication (only if scm_auth_method = "app")
 sdv_github_app_id         = "<OPTIONAL>"
 sdv_github_app_install_id = "<OPTIONAL>"
 
@@ -58,40 +66,62 @@ sdv_github_app_private_key = <<EOT
 -----END RSA PRIVATE KEY-----
 EOT
 
-# PKCS8 Format of the GitHub App private key above
-# Replace with actual value if selected auth type is `app`
-# To generate: openssl pkcs8 -topk8 -inform PEM -outform PEM -nocrypt -in key.pem -out key.pkcs8.pem
-sdv_github_app_private_key_pkcs8 = <<EOT
------BEGIN PRIVATE KEY-----
-... paste content here ...
------END PRIVATE KEY-----
-EOT
+# ========================================
+# Configuration Examples
+# ========================================
 
+# Example 1: GitHub with Personal Access Token
+# scm_type = "github"
+# scm_auth_method = "userpass"
+# scm_repo_url = "https://github.com/myorg/acn-horizon-sdv"
+# scm_repo_branch = "main"
+# scm_username = "git"
+# scm_password = "ghp_xxxxxxxxxxxxxxxxxxxx"
+
+# Example 2: GitHub with App Authentication
+# scm_type = "github"
+# scm_auth_method = "app"
+# scm_repo_url = "https://github.com/myorg/acn-horizon-sdv"
+# scm_repo_branch = "main"
+# sdv_github_app_id = "123456"
+# sdv_github_app_install_id = "78910"
+# sdv_github_app_private_key = "..."
+
+# Example 3: Gerrit with HTTP Authentication
+# scm_type = "git"
+# scm_auth_method = "userpass"
+# scm_repo_url = "https://gerrit.mycompany.com/a/horizon-sdv"
+# scm_repo_branch = "master"
+# scm_username = "john.doe"
+# scm_password = "my-http-password"
+
+# Example 4: GitLab with Personal Access Token
+# scm_type = "git"
+# scm_auth_method = "userpass"
+# scm_repo_url = "https://gitlab.com/mygroup/acn-horizon-sdv"
+# scm_repo_branch = "main"
+# scm_username = "oauth2"
+# scm_password = "glpat-xxxxxxxxxxxxxxxxxxxx"
+
+# Example 5: Public Repository (no authentication)
+# scm_type = "github"  # or "git" for other public Git servers
+# scm_auth_method = "none"
+# scm_repo_url = "https://github.com/open-source-org/public-repo"
+# scm_repo_branch = "main"
+# # No scm_username or scm_password needed
+
+# ========================================
 # Required Admin Secrets
 # These are NOT auto-generated by Terraform and must be provided.
-
-# Keycloak Admin Password (Plain text)
-sdv_keycloak_admin_password = "<REQUIRED>"
-
-# Keycloak Horizon Realm Admin Password (Plain text)
+# ========================================
+sdv_keycloak_admin_password         = "<REQUIRED>"
 sdv_keycloak_horizon_admin_password = "<REQUIRED>"
 
-# Optional Overrides
-enable_arm64 = true
+# Optional: ARM64 Support (set to true or false)
+enable_arm64 = false
 
-# To set secret manually, uncomment required secret
-# s5 : Argo CD Admin
-# s6  : Jenkins Admin
-# s9  : Gerrit Admin
-# s12 : Grafana Admin
-# s14 : PostgreSQL Admin
-# s17 : MCP Gateway Registry Admin
-
-manual_secrets = {
-#   s5 = "Change_Me_123"
-#   s6  = "Change_Me_123"
-#   s9  = "Change_Me_123"
-#   s12 = "Change_Me_123"
-#   s14 = "Change_Me_123"
-#   s17 = "Change_Me_123"
-}
+# Optional: DNSSEC Configuration
+# Enable DNSSEC for Cloud DNS zone. Requires domain ownership verification.
+# Set to true to enable DNSSEC (default, you must verify domain ownership at https://search.google.com/search-console)
+# Set to false to disable DNSSEC
+sdv_dns_dnssec_enabled = true

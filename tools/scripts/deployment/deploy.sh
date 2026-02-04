@@ -15,8 +15,10 @@
 # limitations under the License.
 #
 # Description:
-# Main platform deployment script which can either be run natively on Linux
-# or within the provided container environment.
+# Main deployment script to setup or destroy the platform using Terraform.
+# Handles both local and containerized execution environments.
+# Handles authentication, workspace setup, requirement checks, and Terraform execution.
+# Removes ArgoCD resources gracefully during destruction to avoid namespace hanging.
 
 set -e
 
@@ -39,51 +41,68 @@ version_ge() {
     [ "$2" = "$(echo -e "$1\n$2" | sort -V | head -n1)" ]
 }
 
-# Workspace Setup 
+# Workspace Setup
 setup_workspace() {
-    if [[ -f "$CONTAINER_CONFIG" ]]; then
-        # Clone repository if running within container
-        log_info "Container environment detected. Setting up workspace..."
+  if [[ -f "$CONTAINER_CONFIG" ]]; then
+    # Clone repository if running within container
+    log_info "Container environment detected. Setting up workspace..."
 
-        # Extract Repo Details from terraform.tfvars
-        REPO_OWNER=$(grep '^\s*sdv_github_repo_owner\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
-        REPO_NAME=$(grep '^\s*sdv_github_repo_name\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
-        REPO_BRANCH=$(grep '^\s*sdv_github_repo_branch\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
-        GITHUB_PAT=$(grep '^\s*sdv_github_pat\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
+    # Extract SCM configuration from terraform.tfvars
+    SCM_TYPE=$(grep '^\s*scm_type\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
+    SCM_AUTH_METHOD=$(grep '^\s*scm_auth_method\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
+    SCM_REPO_URL=$(grep '^\s*scm_repo_url\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
+    SCM_REPO_BRANCH=$(grep '^\s*scm_repo_branch\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
+    SCM_USERNAME=$(grep '^\s*scm_username\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
+    SCM_PASSWORD=$(grep '^\s*scm_password\s*=' "$CONTAINER_CONFIG" | cut -d'"' -f2)
 
-        # Clone repository
-        if [[ "$GITHUB_PAT" == "<OPTIONAL>" || "$GITHUB_PAT" == "<REQUIRED>" ]]; then GITHUB_PAT=""; fi
-        
-        log_info "Cloning ${REPO_OWNER}/${REPO_NAME} (Branch: ${REPO_BRANCH})..."
-        if [[ -n "$GITHUB_PAT" ]]; then
-            git clone -q -b "$REPO_BRANCH" "https://${GITHUB_PAT}@github.com/${REPO_OWNER}/${REPO_NAME}.git" .
-        else
-            if ! git clone -q -b "$REPO_BRANCH" "https://github.com/${REPO_OWNER}/${REPO_NAME}.git" . 2>/dev/null; then
-                log_warn "Public clone failed. Repository might be private."
-                read -s -p "Enter GitHub PAT: " MANUAL_PAT; echo ""
-                if [[ -z "$MANUAL_PAT" ]]; then log_err "No token provided."; exit 1; fi
-                git clone -q -b "$REPO_BRANCH" "https://${MANUAL_PAT}@github.com/${REPO_OWNER}/${REPO_NAME}.git" .
-            fi
-        fi
-        
-        # Copy the terraform.tfvars file
-        DEST_TFVARS="terraform/env/terraform.tfvars"
-        mkdir -p "$(dirname "$DEST_TFVARS")"
-        cp "$CONTAINER_CONFIG" "$DEST_TFVARS"
-        
-        # Set TF_DIR to the newly cloned location
-        TF_DIR="$(pwd)/terraform/env"
+    log_info "Cloning from ${SCM_REPO_URL} (Branch: ${SCM_REPO_BRANCH})..."
 
+    # Handle authentication based on method
+    if [[ "$SCM_AUTH_METHOD" == "userpass" ]]; then
+      # Build authenticated URL for username/password
+      SCM_HOST=$(echo "$SCM_REPO_URL" | sed -e 's|^https://||' -e 's|/.*||')
+      SCM_PATH=$(echo "$SCM_REPO_URL" | sed -e 's|^https://[^/]*/||')
+      AUTH_URL="https://${SCM_USERNAME}:${SCM_PASSWORD}@${SCM_HOST}/${SCM_PATH}"
+      git clone -q -b "$SCM_REPO_BRANCH" "$AUTH_URL" .
+    elif [[ "$SCM_AUTH_METHOD" == "none" ]]; then
+      # Public repository - no authentication
+      git clone -q -b "$SCM_REPO_BRANCH" "$SCM_REPO_URL" .
     else
-        # Skip cloning repository if running on local/native machine
-        log_info "Local environment detected. Skipping clone."
-        TF_DIR="${SCRIPT_DIR}/../../../terraform/env"
-        
-        if [[ ! -f "${TF_DIR}/terraform.tfvars" ]]; then
-            log_err "Config file not found at ${TF_DIR}/terraform.tfvars"
-            exit 1
+      # Try public clone first, then prompt if needed
+      if ! git clone -q -b "$SCM_REPO_BRANCH" "$SCM_REPO_URL" . 2>/dev/null; then
+        log_warn "Public clone failed. Repository might be private."
+        read -s -p "Enter password/token: " MANUAL_PASSWORD
+        echo ""
+        if [[ -z "$MANUAL_PASSWORD" ]]; then
+          log_err "No password provided."
+          exit 1
         fi
+
+        SCM_HOST=$(echo "$SCM_REPO_URL" | sed -e 's|^https://||' -e 's|/.*||')
+        SCM_PATH=$(echo "$SCM_REPO_URL" | sed -e 's|^https://[^/]*/||')
+        AUTH_URL="https://${SCM_USERNAME:-git}:${MANUAL_PASSWORD}@${SCM_HOST}/${SCM_PATH}"
+        git clone -q -b "$SCM_REPO_BRANCH" "$AUTH_URL" .
+      fi
     fi
+
+    # Copy the terraform.tfvars file
+    DEST_TFVARS="terraform/env/terraform.tfvars"
+    mkdir -p "$(dirname "$DEST_TFVARS")"
+    cp "$CONTAINER_CONFIG" "$DEST_TFVARS"
+
+    # Set TF_DIR to the newly cloned location
+    TF_DIR="$(pwd)/terraform/env"
+
+  else
+    # Skip cloning repository if running on local/native machine
+    log_info "Local environment detected. Skipping clone."
+    TF_DIR="${SCRIPT_DIR}/../../../terraform/env"
+
+    if [[ ! -f "${TF_DIR}/terraform.tfvars" ]]; then
+      log_err "Config file not found at ${TF_DIR}/terraform.tfvars"
+      exit 1
+    fi
+  fi
 }
 
 check_requirements() {
@@ -176,6 +195,53 @@ check_auth() {
     fi
 }
 
+cleanup_gateways() {
+    log_info "Starting Gateway and HTTPRoute cleanup..."
+    
+    # Delete http-routes first to trigger NEGs deletion
+    log_info "Deleting HTTPRoute resources..."
+    kubectl delete httproutes.gateway.networking.k8s.io --all --all-namespaces --ignore-not-found 2>/dev/null || true
+    
+    # Delete Gateway to remove target proxy
+    log_info "Deleting Gateway resources..."
+    kubectl delete gateway --all --all-namespaces --ignore-not-found 2>/dev/null || true
+    
+    # Remove finalizers if stuck
+    kubectl get httproutes.gateway.networking.k8s.io --all-namespaces -o name 2>/dev/null | while read -r route; do
+        kubectl patch "$route" -p '{"metadata":{"finalizers":null}}' --type=merge 2>/dev/null || true
+    done
+    
+    kubectl get gateways.gateway.networking.k8s.io --all-namespaces -o name 2>/dev/null | while read -r gw; do
+        kubectl patch "$gw" -p '{"metadata":{"finalizers":null}}' --type=merge 2>/dev/null || true
+    done
+
+    log_info "Gateway and HTTPRoute cleanup completed."
+}
+
+cleanup_argocd() {
+    local namespace="${1:-argocd}"
+    log_info "Cleaning up Argo CD namespace: $namespace"
+    
+    # Delete ArgoCD Applications and Projects
+    log_info "Deleting Argo CD Applications..."
+    kubectl delete applications.argoproj.io --all -n "$namespace" --ignore-not-found 2>/dev/null || true
+    log_info "Deleting Argo CD AppProjects..."
+    kubectl delete appprojects.argoproj.io --all -n "$namespace" --ignore-not-found 2>/dev/null || true
+    
+    # Wait for deletion to propagate
+    log_info "Waiting for ArgoCD resources termination to complete..."
+    sleep 45
+    
+    # Remove finalizers from ArgoCD resources if they are stuck
+    for resource in applications.argoproj.io appprojects.argoproj.io; do
+        kubectl get "$resource" -n "$namespace" -o name 2>/dev/null | while read -r res; do
+            kubectl patch "$res" -n "$namespace" -p '{"metadata":{"finalizers":null}}' --type=merge 2>/dev/null || true
+        done
+    done
+    
+    log_info "ArgoCD resource cleanup completed."
+}
+
 # Terraform Execution
 run_terraform() {
     cd "$TF_DIR"
@@ -211,17 +277,20 @@ run_terraform() {
     if [[ "$DESTROY_MODE" == "true" ]]; then
         log_warn "!!! DESTRUCTION MODE ENABLED !!!"
         
-        # Check for Fleet Membership
+        # Check for Fleet Membership and setup kubectl context
         if gcloud container fleet memberships describe "$GKE_CLUSTER" --project="$PROJECT_ID" --location="$LOCATION" &>/dev/null; then
-             log_info "Cleaning up Fleet Membership..."
+             log_info "Setting up kubectl credentials..."
              gcloud container fleet memberships get-credentials "$GKE_CLUSTER" --project="$PROJECT_ID"
-             kubectl delete applications --all -n argocd --ignore-not-found
-             kubectl delete appprojects --all -n argocd --ignore-not-found
              
-             log_info "Waiting 5 minutes for Kubernetes resource removal..."
-             sleep 5m
+             # Run cleanup routines
+             cleanup_gateways
+             cleanup_argocd "argocd"
+        else
+             log_warn "Fleet membership not found, skipping Kubernetes cleanup"
         fi
 
+        # Run Terraform destroy
+        log_info "Running Terraform destroy..."
         terraform destroy -auto-approve
     else
         log_info "Running Terraform Apply..."

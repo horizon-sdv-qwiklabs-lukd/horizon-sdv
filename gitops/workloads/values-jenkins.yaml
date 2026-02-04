@@ -433,10 +433,10 @@ controller:
                   value: "jenkins-gerrit-http-password"
                 - key: "HORIZON_DOMAIN"
                   value: {{ .Values.config.domain }}
-                - key: "HORIZON_GITHUB_URL"
-                  value: {{ .Values.config.workloads.android.url }}
-                - key: "HORIZON_GITHUB_BRANCH"
-                  value: {{ .Values.config.workloads.android.branch }}
+                - key: "HORIZON_SCM_URL"
+                  value: {{ .Values.scm.repoUrl }}
+                - key: "HORIZON_SCM_BRANCH"
+                  value: {{ .Values.scm.branch }}
                 - key: "ANDROID_BUILD_BUCKET_ROOT_NAME"
                   value: {{ .Values.config.projectID }}-aaos
                 - key: "ANDROID_BUILD_DOCKER_ARTIFACT_PATH_NAME"
@@ -525,10 +525,12 @@ controller:
                     scm {
                       git {
                         remote {
-                          url('{{ .Values.config.workloads.android.url }}')
-                          credentials('jenkins-github-creds')
+                          url('{{ .Values.scm.repoUrl }}')
+                          {{- if ne .Values.scm.authMethod "none" }}
+                          credentials('jenkins-scm-creds')
+                          {{- end }}
                         }
-                        branch('*/{{ .Values.config.workloads.android.branch }}')
+                        branch('*/{{ .Values.scm.branch }}')
                       }
                     }
                     scriptPath('workloads/seed/Jenkinsfile')
@@ -567,18 +569,21 @@ controller:
             elapsedTimeFormat: "'<b>'HH:mm:ss.S'</b> '"
           globalLibraries:
             libraries:
-            - defaultVersion: "{{ .Values.config.workloads.android.branch }}"
+            - defaultVersion: "{{ .Values.scm.branch }}"
               name: "cvd-pipeline-shared-library"
               retriever:
                 modernSCM:
                   libraryPath: "workloads/common/jenkins/shared-libraries/cvd-pipeline-shared-library"
                   scm:
+                    {{- if eq .Values.scm.type "github" }}
                     github:
                       configuredByUrl: true
-                      credentialsId: "jenkins-github-creds"
-                      repoOwner: "{{ .Values.github.repoOwner }}"
-                      repository: "{{ .Values.github.repoName }}"
-                      repositoryUrl: "{{ .Values.config.workloads.android.url }}"
+                      {{- if ne .Values.scm.authMethod "none" }}
+                      credentialsId: "jenkins-scm-creds"
+                      {{- end }}
+                      repositoryUrl: "{{ .Values.scm.repoUrl }}"
+                      repoOwner: "{{ .Values.scm.repoOwner }}"
+                      repository: "{{ .Values.scm.repoName }}"
                       traits:
                       - gitHubBranchDiscovery:
                           strategyId: 3
@@ -587,3 +592,12 @@ controller:
                       - gitHubForkDiscovery:
                           strategyId: 2
                           trust: "gitHubTrustPermissions"
+                    {{- else }}
+                    git:
+                      {{- if ne .Values.scm.authMethod "none" }}
+                      credentialsId: "jenkins-scm-creds"
+                      {{- end }}
+                      remote: "{{ .Values.scm.repoUrl }}"
+                      traits:
+                      - gitBranchDiscovery
+                    {{- end }}

@@ -80,6 +80,8 @@ module "sdv_network" {
   subnetwork           = var.sdv_subnetwork
   region               = var.sdv_region
   router_name          = var.sdv_network_egress_router_name
+  pods_range           = var.pods_range
+  services_range       = var.services_range
   enable_arm64         = var.enable_arm64
   arm64_region         = var.arm64_region
   arm64_subnetwork     = var.arm64_subnetwork
@@ -184,11 +186,14 @@ module "sdv_gke_apps" {
   gcp_backend_bucket = var.gcp_backend_bucket_name
   gcp_registry_id    = var.sdv_artifact_registry_repository_id
 
-  github_repo_url    = "https://github.com/${var.github_repo_owner}/${var.github_repo_name}"
-  github_auth_method = var.github_auth_method
-  github_repo_owner  = var.github_repo_owner
-  github_repo_name   = var.github_repo_name
-  github_repo_branch = var.github_repo_branch
+  # SCM configuration
+  scm_type        = var.scm_type
+  scm_auth_method = var.scm_auth_method
+  scm_repo_url    = var.scm_repo_url
+  scm_repo_branch = var.scm_repo_branch
+  scm_repo_owner  = var.scm_repo_owner
+  scm_repo_name   = var.scm_repo_name
+  scm_username    = var.scm_username
 
   domain_name    = var.github_domain_name
   subdomain_name = var.github_env_name
@@ -311,7 +316,7 @@ module "sdv_iam_service_account_user" {
 # allow tcp port 22 for compute_sa
 
 resource "google_compute_firewall" "allow_tcp_22" {
-  name    = "cuttflefish-allow-tcp-22"
+  name    = "cuttlefish-allow-tcp-22"
   network = var.sdv_network
 
   allow {
@@ -319,8 +324,11 @@ resource "google_compute_firewall" "allow_tcp_22" {
     ports    = ["22"]
   }
 
-  #source_ranges = ["10.1.0.0/24"]
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = concat(
+    ["35.235.240.0/20"],                           # Google Identity-Aware Proxy (IAP): required for IAP SSH 
+    [var.pods_range],                              # Internal VPC Ranges
+    var.enable_arm64 ? [var.arm64_pods_range] : [] # Secondary for ARM64 instances
+  )
 
   target_service_accounts = [var.sdv_gcp_compute_sa_email]
 

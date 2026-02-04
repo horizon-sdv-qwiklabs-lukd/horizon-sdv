@@ -15,24 +15,49 @@
 # Description:
 # Configuration file containing variables for the "base" module.
 
-variable "github_auth_method" {
-  description = "Authentication method for Argo CD: 'app' or 'pat'."
+# SCM Configuration
+variable "scm_type" {
+  description = "SCM type: 'github' or 'git'"
   type        = string
 }
 
-variable "github_repo_owner" {
-  description = "Define the GitHub repository name"
+variable "scm_auth_method" {
+  description = "SCM auth method: 'app' or 'userpass'"
   type        = string
 }
 
-variable "github_repo_name" {
-  description = "Define the GitHub repository name"
+variable "scm_repo_url" {
+  description = "Full SCM repository URL"
   type        = string
+}
+
+variable "scm_repo_branch" {
+  description = "SCM repository branch"
+  type        = string
+}
+
+variable "scm_repo_owner" {
+  description = "SCM repository owner (parsed from URL for GitHub)"
+  type        = string
+  default     = ""
+}
+
+variable "scm_repo_name" {
+  description = "SCM repository name (parsed from URL for GitHub)"
+  type        = string
+  default     = ""
+}
+
+variable "scm_username" {
+  description = "SCM username"
+  type        = string
+  default     = "git"
 }
 
 variable "github_repo_branch" {
-  description = "Github repo branch"
+  description = "[Legacy] Github repo branch"
   type        = string
+  default     = ""
 }
 
 variable "github_env_name" {
@@ -280,11 +305,6 @@ variable "sdv_list_of_apis" {
   type        = set(string)
 }
 
-variable "sdv_abfs_license_key_b64" {
-  description = "ABFS license base64"
-  type        = string
-}
-
 # Define Parameters map
 variable "sdv_gcp_parameters_map" {
   description = "Map of parameters for Parameter Manager"
@@ -308,6 +328,17 @@ variable "arm64_subnetwork" {
   default     = "sdv-subnet-us"
 }
 
+variable "pods_range" {
+  description = "pod CIDR"
+  type        = string
+  default     = "10.10.0.0/16"
+}
+
+variable "services_range" {
+  description = "service CIDR"
+  type        = string
+  default     = "10.12.0.0/16"
+}
 variable "arm64_pods_range" {
   description = "ARM64 pod CIDR"
   type        = string
@@ -318,4 +349,10 @@ variable "arm64_services_range" {
   description = "ARM64 service CIDR"
   type        = string
   default     = "10.22.0.0/16"
+}
+
+variable "sdv_dns_dnssec_enabled" {
+  description = "Enable DNSSEC for Cloud DNS zone. Requires domain ownership verification. Enabled by default."
+  type        = bool
+  default     = true
 }

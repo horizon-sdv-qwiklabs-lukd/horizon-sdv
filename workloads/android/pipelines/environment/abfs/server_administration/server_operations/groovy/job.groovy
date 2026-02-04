@@ -34,6 +34,12 @@ pipelineJob('Android/Environment/ABFS/Server Administration/Server Operations') 
       description('''<p>The action to perform to create, destroy, stop, start, restart server.<br/>
         Use `APPLY` to create the server or update based on any changes made below.</p>''')
     }
+
+    nonStoredPassword {
+      name('ABFS_LICENSE_B64')
+      description('''<p><b>Mandatory:</b> Base64-encoded ABFS license file (required for <code>APPLY</code> actions).</p>''')
+    }
+
     stringParam {
       name('SERVER_MACHINE_TYPE')
       defaultValue('n2-highmem-64')
@@ -84,13 +90,6 @@ pipelineJob('Android/Environment/ABFS/Server Administration/Server Operations') 
     }
 
     stringParam {
-      name('ABFS_LICENSE_B64')
-      defaultValue('')
-      description('''<p>Optional: Base64 encoded version of the ABFS license file.</p>''')
-      trim(true)
-    }
-
-    stringParam {
       name('ABFS_COS_IMAGE_REF')
       defaultValue("${ABFS_COS_IMAGE_REF}")
       description('''<p>ABFS Containerized OS images used on server and uploader instances.</p>''')
@@ -118,10 +117,10 @@ pipelineJob('Android/Environment/ABFS/Server Administration/Server Operations') 
       scm {
         git {
           remote {
-            url("${HORIZON_GITHUB_URL}")
-            credentials('jenkins-github-creds')
+            url("${HORIZON_SCM_URL}")
+            credentials('jenkins-scm-creds')
           }
-          branch("*/${HORIZON_GITHUB_BRANCH}")
+          branch("*/${HORIZON_SCM_BRANCH}")
         }
       }
       scriptPath('workloads/android/pipelines/environment/abfs/server_administration/server_operations/Jenkinsfile')

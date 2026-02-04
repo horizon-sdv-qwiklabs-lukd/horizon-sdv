@@ -40,8 +40,10 @@ Horizon SDV is designed to simplify the deployment and management of Android wor
   - [Section #4i - MCP Gateway Registry](#section-4i---mcp-gateway-registry)
 - [Section #5 - Troubleshooting](#section-5---troubleshooting)
   - [Section #5a - Keycloak sign-in failure](#section-5a---keycloak-sign-in-failure)
-  - [Section #5b - Terraform destroy failure](#section-5b---terraform-destroy-failure)
+  - [Section #5b - Error when reading or editing Certificate](#section-5b---error-when-reading-or-editing-certificate)
   - [Section #5c - Docker permission denied](#section-5c---docker-permission-denied)
+  - [Section #5d - Docker Container build resource issues](#section-5d---docker-container-build-resource-issues)
+  - [Section #5e - Error creating SslPolicy](#section-5e---error-creating-sslpolicy)
 
 ## Technologies
 Technologies being used to provision the infrastructure along with the required applications for the GKE cluster.
@@ -163,15 +165,18 @@ If you do not prefer using the Cloud Shell on GCP Console, install GCP CLI tools
 #### Google Cloud Platform
 * Configured GCP account/project.
 * IAM Roles to be granted to new user accounts added by the owner of the project 
-   You can either assign a basic role or a fine-grained permission.
-   - Basic: Editor
-   **OR**
-   - Fine-grained:
-      - Compute Admin
-      - Kubernetes Engine Admin
-      - Artifact Registry Administrator
-      - Cloud Filestore Editor
-      - Storage Admin
+   - Editor
+   - Service Account Admin
+   - Project IAM Admin
+   - Secret Manager Admin
+   - Storage Admin
+   - Compute Admin
+   - Kubernetes Engine Admin
+   - Kubernetes Engine Cluster Admin
+   - DNS Administrator
+   - Artifact Registry Administrator
+   - Certificate Manager Admin
+   - Parameter Manager Admin
 
    Refer this document for detailed instructions for adding new user accounts: [Add an account for a new user](https://support.google.com/cloudidentity/answer/33310?sjid=12027755488314741556-NC)
 
@@ -305,7 +310,7 @@ This sections covers the steps to be performed before Terraform workflow is run.
 #### Setup Terraform Variables
 > [!IMPORTANT]
 > The credentials below are for demonstration purposes and may be different for your environment.
-> Create a strong password with at least 13 characters in length and containing a combination of,
+> Create a strong password with at least 12 characters in length and containing a combination of,
 > - Uppercase letters [A -Z]
 > - Lowercase letters [a -z]
 > - Numbers [0 - 9]
@@ -323,22 +328,27 @@ This sections covers the steps to be performed before Terraform workflow is run.
   - Environment Metadata
     - `sdv_env_name`: Environment name of Horizon SDV platform of your choice which will also be used as sub-domain name. Preferably set same value as `<SUB_DOMAIN>`.
     - `sdv_root_domain`: Domain name, same value as `<HORIZON_DOMAIN>`.
-  - GitHub Integration
-    - `sdv_github_repo_name`: Name of your GitHub repository. (example: `horizon-sdv`).
-    - `sdv_github_repo_owner`: GitHub Organization name or GitHub user name who owns the GitHub repo (example: `GoogleCloudPlatform`)
-    - `sdv_github_repo_branch`: Name of branch from the forked repository to be used for deployment.
-    - `github_auth_method` : Select the GitHub Auth method of your choice. Set `pat` to use GitHub Personal Access Token. Set `app` to use GitHub App credentials.
-      - If GitHub PAT
-        - `sdv_github_pat` : GitHub [Personal Access token(Classic)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-personal-access-token-classic). 
-      - If GitHub App
-        - `sdv_github_app_id`: GitHub App ID from [Section #1c - Create and Install GitHub Application](#section-1c---create-and-install-github-application).
-        - `sdv_github_app_install_id`: 
-           - Navigate to Organization Settings, GitHub Apps and click on "Configure".
-           - Once in the GitHub App configuration page, the `GH_INSTALLATION_ID` is present in the URL of the page as below,
-           - `https://github.com/organizations/<GH-ORG-NAME>/settings/installations/<INSTALLATION_ID>`
-           - Enter the value of `<INSTALLATION_ID>`
-         - `sdv_github_app_private_key`: GitHub App Private key downloaded from [Section #1c - Create and Install GitHub Application](#section-1c---create-and-install-github-application). Paste the content between `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----`.
-         - `sdv_github_app_private_key_pkcs8`: PKCS8 Format of the GitHub App private key above. Command to create the key file is provided in the sample `terraform.tfvars.sample` file. Paste the content between `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----`.
+  - SCM Configuration (Source Code Management)
+    - `scm_type`: Set to `github` for GitHub or `git` for other Git servers (Gerrit, GitLab, etc.).
+    - `scm_auth_method`: Select authentication method:
+      - `app`: GitHub App authentication (only for GitHub)
+      - `userpass`: Username/Password or token (works with any Git server)
+      - `none`: Public repository (no authentication required)
+    - `scm_repo_url`: Full repository URL (e.g., `https://github.com/owner/repo` or `https://gerrit.example.com/a/project`)
+    - `scm_repo_branch`: Branch name to deploy from
+    - If using `userpass` authentication:
+      - `scm_username`: Username (use `git` for GitHub PAT, actual username for Gerrit/GitLab)
+      - `scm_password`: Password or token (GitHub PAT, Gerrit HTTP password, GitLab token, etc.)
+    - If using `app` authentication (GitHub only):
+      - `sdv_github_app_id`: GitHub App ID from [Section #1c - Create and Install GitHub Application](#section-1c---create-and-install-github-application).
+      - `sdv_github_app_install_id`: 
+         - Navigate to Organization Settings, GitHub Apps and click on "Configure".
+         - Once in the GitHub App configuration page, the `GH_INSTALLATION_ID` is present in the URL of the page as below,
+         - `https://github.com/organizations/<GH-ORG-NAME>/settings/installations/<INSTALLATION_ID>`
+         - Enter the value of `<INSTALLATION_ID>`
+       - `sdv_github_app_private_key`: GitHub App Private key downloaded from [Section #1c - Create and Install GitHub Application](#section-1c---create-and-install-github-application). Paste the content between `-----BEGIN RSA PRIVATE KEY-----` and `-----END RSA PRIVATE KEY-----`.
+    - If using `none` authentication (public repos):
+      - No credentials needed - simply provide the repository URL and branch
   - Required Admin Secrets
     - `sdv_keycloak_admin_password`: Plain text value follwing the required password rules mentioned above.
     - `sdv_keycloak_horizon_admin_password`: Plain text value follwing the required password rules mentioned above.
@@ -349,13 +359,34 @@ This sections covers the steps to be performed before Terraform workflow is run.
 #### Terraform workflow
 Steps to start the Terraform workflow.
 
+**Containerized deployment:**
 1. Navigate to `tools/scripts/deployment`
-2. Provisioning can be done in two ways. 
-  - For **native** (local machine) deployment navigate to the script at path `tools/scripts/deployment/` and run `./deploy.sh` to start the deployment script execution which requires all tools mentioned in [Section #3a - Terraform Workflow Prerequisites](#section-3a---terraform-workflow-prerequisites)
-  - For **container** based deployment, navigate to the script at path `tools/scripts/deployment/` and run `./container-deploy.sh` (Still requires Docker to be installed on the machine).
+2. Provisioning can be done by running `./container-deploy.sh` (Requires **Docker** to be installed on the machine).
+3. The script `./container-deploy.sh` supports [**Google Cloud Shell**](https://docs.cloud.google.com/shell/docs/launching-cloud-shell), Linux or Windows (with [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)).
 
 > [!Note]
-> To deprovision the platform, run the same scripts with `--destroy` or `-d` flag.
+> To deprovision the platform, run the same script with `--destroy` or `-d` flag.
+> 
+> GCE Disks or other GCE resources provisioned by the GKE cluster will not be automatically removed while running
+> deployment script with `--destroy` or `-d` flag as they are not managed by Terraform. A manual cleanup is required.
+
+**Linux Native deployment:**
+> [!Important]
+> Use this deployment method ONLY on **Linux** (Ubuntu or Debian based distros), not tested on WSL or other platforms.
+
+1. The below listed tools are required to be installed.
+   1. [Kubectl](https://kubernetes.io/docs/tasks/tools/) 
+   2. [Terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
+   3. Docker - [Linux](https://docs.docker.com/engine/install/)
+   4. [Google Cloud CLI](https://docs.cloud.google.com/sdk/docs/install-sdk)
+2. Navigate to `tools/scripts/deployment`
+3. Provisioning can be done by running `./deploy.sh` requires all above-mentioned tools to be installed.
+
+> [!Note]
+> To deprovision the platform, run the same script with `--destroy` or `-d` flag.
+> 
+> GCE Disks or other GCE resources provisioned by the GKE cluster will not be automatically removed while running
+> deployment script with `--destroy` or `-d` flag as they are not managed by Terraform. A manual cleanup is required.
 
 ### Section #3c - Post Terraform Workflow Setup
 To make your Cloud DNS zone active and reachable on the internet, you must update the Nameservers at your Domain Registrar. You must "point" your domain from the registrar to Google Cloud.
@@ -791,33 +822,28 @@ If you are getting the error "User <USER_NAME> authenticated with Identity provi
 - Go to Users, click on your user.
 - Make sure both Username and Email fields have the complete Email address.
 
-### Section #5b - Terraform destroy failure
-Terraform destroy workflow failing with below error,
-```
-Error: Error when reading or editing SslPolicy: googleapi: Error 400: The ssl_policy resource 'projects/<PROJECT_ID>/global/sslPolicies/gke-ssl-policy' is already being used by 'projects/<PROJECT_ID>/global/targetHttpsProxies/gkegw1-6ic7-gke-gateway-gke-gateway-qihmpg2399w0', resourceInUseByAnotherResource
-│ 
-│ 
-╵
-╷
-│ Error: Error when reading or editing CertificateMap: googleapi: Error 400: can't delete certificate map that is referenced by a target proxy
+### Section #5b - Error when reading or editing Certificate
+```shell
+│  Error: Error when reading or editing Certificate: googleapi: Error 400: can't delete certificate that is referenced by a CertificateMapEntry or other resources
 │ Details:
 │ [
 │   {
 │     "@type": "type.googleapis.com/google.rpc.PreconditionFailure",
 │     "violations": [
 │       {
-│         "description": "can't delete certificate map that is referenced by a target proxy",
-│         "subject": "projects/<PROJECT_NUMBER>/locations/global/certificateMaps/horizon-sdv-map",
+│         "description": "can't delete certificate that is referenced by a CertificateMapEntry or other resources",
+│         "subject": "projects/<PROJECT_NUMBER>/locations/global/certificates/horizon-sdv",
 │         "type": "RESOURCE_STILL_IN_USE"
 │       }
 │     ]
 │   }
 │ ]
 ```
-To resolve this error it is required to remove left-over Network Endpoint Groups created by GKE Cluster which is not managed by Terraform,
-1. Naviage to Network endpoint groups.
-2. Check all the Network endpoints created by the GKE Cluster and delete them.
-3. Re-run the Terraform destroy workflow using the deployment script.
+If facing above error, as a workaround, run the below command to temporarily enable edit or removal of the certificate.
+
+```shell
+gcloud certificate-manager maps delete horizon-sdv-map
+```
 
 ### Section #5c - Docker permission denied
 If you encounter below error on Linux,
@@ -827,3 +853,31 @@ ERROR: permission denied while trying to connect to the Docker daemon socket at 
 ```
 
 Follow post-install steps as shown in [Manage Docker as a non-root user](https://docs.docker.com/engine/install/linux-postinstall/)
+
+### Section #5d - Docker Container build resource issues
+```shell
+│ Error: Error running legacy build: process "/bin/sh -c apt-get update && apt-get install -y     curl     git     build-essential     && rm -rf /var/lib/apt/lists/*" did not complete successfully: exit code: 100
+│
+│
+│
+│   with module.base.module.sdv_container_images.docker_image.sdv-container-images["gerrit-mcp-server-app"],
+│   on ../modules/sdv-container-images/main.tf line 20, in resource "docker_image" "sdv-container-images":
+│   20: resource "docker_image" "sdv-container-images" {
+│
+```
+ Building Docker containers can be resource-intensive. If you encounter build failures (such as `exit code: 100` as shown above or unexpected timeouts), please increase the CPU and Memory allocated to Docker and re-run the deployment script.
+
+### Section #5e - Error creating SslPolicy
+```shell
+│ Error: Error creating SslPolicy: googleapi: Error 409: The resource 'projects/<PROJECT_ID>/global/sslPolicies/gke-ssl-policy' already exists, alreadyExists
+│
+│   with module.base.module.sdv_ssl_policy.google_compute_ssl_policy.gke_ssl_policy,
+│   on ../modules/sdv-ssl-policy/main.tf line 21, in resource "google_compute_ssl_policy" "gke_ssl_policy":
+│   21: resource "google_compute_ssl_policy" "gke_ssl_policy" {
+│
+```
+A manual workaround for this error, run the below command,
+
+```shell
+gcloud compute ssl-policies delete gke-ssl-policy --global --project=sdva-2108202401
+```

@@ -54,10 +54,10 @@ pipelineJob('Utilities/Storage/GCS/Filtered Objects - Update Metadata') {
       scm {
         git {
           remote {
-            url("${HORIZON_GITHUB_URL}")
-            credentials('jenkins-github-creds')
+            url("${HORIZON_SCM_URL}")
+            credentials('jenkins-scm-creds')
           }
-          branch("*/${HORIZON_GITHUB_BRANCH}")
+          branch("*/${HORIZON_SCM_BRANCH}")
         }
       }
       scriptPath('workloads/utilities/storage/gcs/update_metadata_filtered_objects/Jenkinsfile')

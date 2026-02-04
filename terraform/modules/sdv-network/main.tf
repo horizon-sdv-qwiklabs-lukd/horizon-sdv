@@ -52,11 +52,11 @@ module "vpc" {
       "${var.subnetwork}" = [
         {
           range_name    = "pods-range"
-          ip_cidr_range = "10.10.0.0/16"
+          ip_cidr_range = var.pods_range
         },
         {
           range_name    = "services-range"
-          ip_cidr_range = "10.12.0.0/16"
+          ip_cidr_range = var.services_range
         },
       ]
     },

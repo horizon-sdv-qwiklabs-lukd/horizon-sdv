@@ -16,7 +16,7 @@ The ABFS Server VM instance will be seeded with the desired Android revision by 
 Before creating the ABFS Server VM instance, the following dependencies must be met:
 - **Seed Workloads**: Android workload must be seeded to ensure the common parameters are set for the job.
 - **Service Account Creation**: The abfs-server service account must be created in the GCP project.
-- **ABFS License Deployment**: The ABFS license provided by Google must be deployed on the platform using GitHub environment secrets and Terraform workflow.
+- **ABFS License Deployment**: The ABFS license provided by Google must be deployed on the platform via Jenkins.
 - **Docker Infra Image Template Job**:The Docker Infra Image Template job must be run, and the Docker image must be available in the registry.
 
 Consider using `Get Server Details` to ensure the server has been provisioned correctly.
@@ -35,6 +35,10 @@ The action to perform to create, destroy, stop, start, restart server.
 - `APPLY`: use this to create the instance based on the set of defined parameters.
 - `DESTROY`: use this to delete the instance.
 - `STOP`|`START`|`RESTART`: useful for stopping expensive instances and starting when required.
+
+### `ABFS_LICENSE_B64`
+
+Google provided license file converted to base64. This is mandatory for `ABFS_TERRAFORM_ACTION` `APPLY` actions. Without this license, the ABFS server will not be functional.
 
 ### `SERVER_MACHINE_TYPE`
 
@@ -68,10 +72,6 @@ The URL for Google Terraform modules for ABFS.
 
 The sha1 for Google Terraform modules for ABFS.
 
-### `ABFS_LICENSE_B64`
-
-This is a local override of the ABFS license that was created in GitHub environment secrets and stored as a kubernetes secret. It's purpose is to allow users test license updates locally, prior to updating GitHub, Terraform and ArgoCD to apply the license formally to the project.
-
 ### `ABFS_COS_IMAGE_REF`
 Defines the ABFS Containerized OS images used on server and uploader instances.
 
@@ -95,7 +95,7 @@ These are as follows:
 -   `HORIZON_GITHUB_URL`
     - The URL to the Horizon SDV GitHub repository.
 
--   `HORIZON_GITHUB_BRANCH`
+-   `HORIZON_SCM_BRANCH`
     - The branch name the job will be configured for from `HORIZON_GITHUB_URL`.
 
 -   `JENKINS_SERVICE_ACCOUNT`

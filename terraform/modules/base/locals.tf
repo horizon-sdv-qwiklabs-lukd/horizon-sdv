@@ -24,7 +24,7 @@ locals {
     module.sdv_gke_cluster.name
   )
 
-  common_nginx_version = "1.28.0-alpine"
+  common_nginx_version = "1.28.1-alpine3.23"
 
   images = {
     # build_version: version of container images to be built and pushed to Artifact Registry.
@@ -106,3 +106,4 @@ locals {
     }
   }
 }
+

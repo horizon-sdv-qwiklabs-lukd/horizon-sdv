@@ -34,7 +34,7 @@ GRAFANA_TEMP_FILE="temp_grafana_cm.yaml"
 UPDATED_GRAFANA_TEMP_FILE="updated_grafana_cm.yaml"
 
 #get grafana-keycloak-secret and prepare NEW_SECRET string
-NEW_SECRET="client_secret = "$(kubectl get secret --namespace monitoring  grafana-keycloak-secret -o jsonpath="{.data.client_secret}" | base64 --decode)
+NEW_SECRET="client_secret = "$(kubectl get secret --namespace monitoring  grafana-keycloak-secret -o jsonpath="{.data.client_secret}" | base64 -d)
 
 
 if [[ "${DEBUG:-0}" == "1" ]]; then

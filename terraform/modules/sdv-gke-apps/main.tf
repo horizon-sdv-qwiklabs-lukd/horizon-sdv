@@ -53,10 +53,10 @@ resource "kubernetes_service_account" "argocd_sa" {
   ]
 }
 
-# Create the empty GitHub creds secret
-resource "kubernetes_secret" "argocd_github_creds" {
+# Create the SCM credentials secret
+resource "kubernetes_secret" "argocd_scm_creds" {
   metadata {
-    name      = "argocd-github-creds"
+    name      = "argocd-scm-creds"
     namespace = kubernetes_namespace.argocd.metadata[0].name
     labels = {
       "argocd.argoproj.io/secret-type" = "repository"
@@ -64,9 +64,9 @@ resource "kubernetes_secret" "argocd_github_creds" {
   }
 
   data = {
-    "url"      = var.github_repo_url
+    "url"      = var.scm_repo_url
     "type"     = "git"
-    "username" = var.github_auth_method == "pat" ? "git" : null
+    "username" = var.scm_auth_method == "userpass" ? var.scm_username : null
   }
 
   depends_on = [
@@ -121,7 +121,7 @@ resource "helm_release" "argocd" {
   depends_on = [
     helm_release.external_secrets,
     kubernetes_service_account.argocd_sa,
-    kubernetes_secret.argocd_github_creds,
+    kubernetes_secret.argocd_scm_creds,
     kubernetes_secret.argocd_secret
   ]
 }
@@ -154,15 +154,17 @@ resource "kubectl_manifest" "argocd_secret_store" {
   ]
 }
 
-# Create the ExternalSecret
-resource "kubectl_manifest" "es_github_creds" {
+# Create the ExternalSecret for SCM credentials (skip for public repos)
+resource "kubectl_manifest" "es_scm_creds" {
+  count = var.scm_auth_method != "none" ? 1 : 0
+  
   validate_schema = false
 
   yaml_body = <<-EOT
     apiVersion: external-secrets.io/v1beta1
     kind: ExternalSecret
     metadata:
-      name: argocd-github-creds
+      name: argocd-scm-creds
       namespace: ${kubernetes_namespace.argocd.metadata[0].name}
     spec:
       refreshInterval: 10s
@@ -170,10 +172,10 @@ resource "kubectl_manifest" "es_github_creds" {
         kind: SecretStore
         name: ${kubectl_manifest.argocd_secret_store.name}
       target:
-        name: ${kubernetes_secret.argocd_github_creds.metadata[0].name}
+        name: ${kubernetes_secret.argocd_scm_creds.metadata[0].name}
         creationPolicy: Merge
       data:
-      %{if var.github_auth_method == "app"}
+      %{if var.scm_auth_method == "app"}
       - secretKey: githubAppID
         remoteRef:
           key: github-app-id-b64
@@ -189,14 +191,14 @@ resource "kubectl_manifest" "es_github_creds" {
       %{else}
       - secretKey: password
         remoteRef:
-          key: github-pat-b64
+          key: scm-password-b64
           decodingStrategy: Base64
       %{endif}
   EOT
 
   depends_on = [
     kubectl_manifest.argocd_secret_store,
-    kubernetes_secret.argocd_github_creds
+    kubernetes_secret.argocd_scm_creds
   ]
 }
 
@@ -274,16 +276,20 @@ resource "kubectl_manifest" "argocd_application" {
     spec:
       project: horizon-sdv
       source:
-        repoURL: ${var.github_repo_url}
+        repoURL: ${var.scm_repo_url}
         path: gitops
-        targetRevision: ${var.github_repo_branch}
+        targetRevision: ${var.scm_repo_branch}
         helm:
           values: |
-            github:
-              authMethod: ${var.github_auth_method}
-              username: "git"
-              repoOwner: ${var.github_repo_owner}
-              repoName: ${var.github_repo_name}
+            scm:
+              type: ${var.scm_type}
+              authMethod: ${var.scm_auth_method}
+              username: ${var.scm_username}
+              repoUrl: ${var.scm_repo_url}
+              branch: ${var.scm_repo_branch}
+              %{if var.scm_type == "github"}repoOwner: ${var.scm_repo_owner}
+              repoName: ${var.scm_repo_name}
+              %{endif}
             config:
               domain: ${var.subdomain_name}.${var.domain_name}
               projectID: ${var.gcp_project_id}
@@ -308,12 +314,12 @@ resource "kubectl_manifest" "argocd_application" {
                 gerrit: ${var.gcp_cloud_region}-docker.pkg.dev/${var.gcp_project_id}/${var.gcp_registry_id}/gerrit-post:${var.images["gerrit-post"].version}
               workloads:
                 android:
-                  url: ${var.github_repo_url}
-                  branch: ${var.github_repo_branch}
+                  url: ${var.scm_repo_url}
+                  branch: ${var.scm_repo_branch}
             spec:
               source:
-                repoURL: ${var.github_repo_url}
-                targetRevision: ${var.github_repo_branch}
+                repoURL: ${var.scm_repo_url}
+                targetRevision: ${var.scm_repo_branch}
       path: gitops
       destination:
         server: https://kubernetes.default.svc

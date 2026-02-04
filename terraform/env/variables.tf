@@ -32,7 +32,7 @@ variable "manual_secrets" {
   validation {
     condition = alltrue([
       for k, v in var.manual_secrets : (
-        length(v) > 12 &&             # At least 12 characters
+        length(v) >= 12 &&            # At least 12 characters
         v != "Change_Me_123" &&       # Not default value ("Change_Me_123")
         can(regex("[A-Z]", v)) &&     # At least one Uppercase
         can(regex("[0-9]", v)) &&     # At least one Number
@@ -43,36 +43,64 @@ variable "manual_secrets" {
   }
 }
 
-variable "github_auth_method" {
-  description = "Auth method for Argo CD 'app' or 'pat'"
+# SCM Configuration
+variable "scm_type" {
+  description = "SCM type: 'github' (GitHub-specific features) or 'git' (generic Git server)"
   type        = string
+  default     = "github"
   validation {
-    condition     = contains(["app", "pat"], var.github_auth_method)
-    error_message = "The auth method must be either 'app' or 'pat'."
+    condition     = contains(["github", "git"], var.scm_type)
+    error_message = "SCM type must be either 'github' or 'git'."
   }
 }
 
-variable "sdv_github_app_id" {
-  description = "The var gh_app_id value"
+variable "scm_auth_method" {
+  description = "Auth method: 'app' (GitHub App only), 'userpass' (username/password or token), or 'none' (public repos)"
   type        = string
-  default     = ""
+  validation {
+    condition     = contains(["app", "userpass", "none"], var.scm_auth_method)
+    error_message = "Auth method must be 'app' (GitHub App), 'userpass' (username/password), or 'none' (public repository)."
+  }
 }
 
-variable "sdv_github_app_install_id" {
-  description = "The var gh_installation_id value"
+variable "scm_repo_url" {
+  description = "Full repository URL (e.g., https://github.com/owner/repo or https://git.example.com/project/repo)"
   type        = string
-  default     = ""
 }
 
-variable "sdv_github_app_private_key" {
-  description = "The secret GH_APP_KEY value"
+variable "scm_repo_branch" {
+  description = "Repository branch or ref"
+  type        = string
+}
+
+variable "scm_username" {
+  description = "SCM username (use 'git' for GitHub PAT, actual username for other Git servers)"
+  type        = string
+  default     = "git"
+}
+
+variable "scm_password" {
+  description = "SCM password or token (GitHub PAT, Gerrit HTTP password, GitLab token, etc.)"
   type        = string
   default     = ""
   sensitive   = true
 }
 
-variable "sdv_github_app_private_key_pkcs8" {
-  description = "The secret GH_APP_KEY converted to pkcs8 value"
+# GitHub App credentials (only for scm_auth_method = "app")
+variable "sdv_github_app_id" {
+  description = "GitHub App ID (only for GitHub App auth)"
+  type        = string
+  default     = ""
+}
+
+variable "sdv_github_app_install_id" {
+  description = "GitHub App Installation ID (only for GitHub App auth)"
+  type        = string
+  default     = ""
+}
+
+variable "sdv_github_app_private_key" {
+  description = "GitHub App Private Key (only for GitHub App auth)"
   type        = string
   default     = ""
   sensitive   = true
@@ -98,33 +126,6 @@ variable "sdv_keycloak_horizon_admin_password" {
   }
 }
 
-variable "sdv_abfs_license_key_b64" {
-  description = "The secret Github ABFS_LICENSE_B64 value"
-  type        = string
-  default     = "dummy"
-}
-
-variable "sdv_github_pat" {
-  description = "Github access token"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "sdv_github_repo_branch" {
-  description = "Github repo branch"
-  type        = string
-}
-
-variable "sdv_github_repo_name" {
-  description = "Github repo name"
-  type        = string
-}
-
-variable "sdv_github_repo_owner" {
-  description = "Github repo owner (github user or organization name)"
-  type        = string
-}
 
 variable "sdv_env_name" {
   description = "Github environment name"
@@ -163,4 +164,10 @@ variable "sdv_gcp_backend_bucket" {
 
 variable "enable_arm64" {
   type = bool
+}
+
+variable "sdv_dns_dnssec_enabled" {
+  description = "Enable DNSSEC for Cloud DNS zone. Requires domain ownership verification. Enabled by default."
+  type        = bool
+  default     = true
 }

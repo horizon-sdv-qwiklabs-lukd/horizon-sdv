@@ -49,10 +49,10 @@ pipelineJob('Cloud-Workstations/Workstation-Admin-Operations/List Workstations')
       scm {
         git {
           remote {
-            url("${HORIZON_GITHUB_URL}")
-            credentials('jenkins-github-creds')
+            url("${HORIZON_SCM_URL}")
+            credentials('jenkins-scm-creds')
           }
-          branch("*/${HORIZON_GITHUB_BRANCH}")
+          branch("*/${HORIZON_SCM_BRANCH}")
         }
       }
       scriptPath('workloads/cloud-workstations/pipelines/workstation-admin-operations/list-workstations/Jenkinsfile')

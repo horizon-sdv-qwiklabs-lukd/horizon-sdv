@@ -13,6 +13,11 @@
 # limitations under the License.
 
 locals {
+  # Parse repo URL to extract owner/name
+  scm_repo_url_without_protocol = replace(var.scm_repo_url, "https://", "")
+  scm_repo_parts                = split("/", local.scm_repo_url_without_protocol)
+  scm_repo_owner                = var.scm_type == "github" ? local.scm_repo_parts[1] : ""
+  scm_repo_name                 = length(local.scm_repo_parts) > 2 ? replace(local.scm_repo_parts[2], ".git", "") : ""
 
   # Password policies per secret (adjust lengths/policy per need)
   secret_password_specs = {
@@ -127,8 +132,9 @@ EOT
     # GCP secret name:  gh-cuttlefish-vm-ssh-private-key
     # WI to GKE at ns/jenkins/sa/jenkins-sa.
     s11 = {
-      secret_id        = "jenkins-cuttlefish-ssh-key-b64"
-      value            = base64encode(module.cuttlefish_key.private_key_openssh)
+      secret_id = "jenkins-cuttlefish-ssh-key-b64"
+      # SSH compatibility to adhere to POSIX compliance (newline).
+      value            = base64encode(format("%s\n", module.cuttlefish_key.private_key_openssh))
       use_github_value = false
       gke_access = [
         {
@@ -167,19 +173,6 @@ EOT
         {
           ns = "keycloak"
           sa = "keycloak-sa"
-        }
-      ]
-    }
-    # GCP secret name:  gh_abfs_license_b64
-    # WI to GKE at ns/jenkins/sa/jenkins-sa.
-    s15 = {
-      secret_id        = "jenkins-abfs-license-b64"
-      value            = "dummy"
-      use_github_value = true
-      gke_access = [
-        {
-          ns = "jenkins"
-          sa = "jenkins-sa"
         }
       ]
     }
@@ -243,7 +236,7 @@ EOT
     }
     s8 = {
       secret_id        = "github-app-private-key-pkcs8-b64"
-      value            = base64encode(var.sdv_github_app_private_key_pkcs8)
+      value            = var.scm_auth_method == "app" ? base64encode(data.external.pkcs8_converter[0].result.result) : ""
       use_github_value = true
       gke_access = [
         {
@@ -253,11 +246,28 @@ EOT
       ]
     }
   }
-  sdv_gcp_github_pat_secrets_map = {
-    s16 = {
-      secret_id        = "github-pat-b64"
-      value            = base64encode(var.sdv_github_pat)
-      use_github_value = true
+
+  # Username/password secrets (for generic Git auth)
+  sdv_gcp_userpass_secrets_map = {
+    s18 = {
+      secret_id        = "scm-username-b64"
+      value            = base64encode(var.scm_username)
+      use_github_value = false
+      gke_access = [
+        {
+          ns = "jenkins"
+          sa = "jenkins-sa"
+        },
+        {
+          ns = "argocd"
+          sa = "argocd-sa"
+        }
+      ]
+    }
+    s19 = {
+      secret_id        = "scm-password-b64"
+      value            = base64encode(var.scm_password)
+      use_github_value = false
       gke_access = [
         {
           ns = "jenkins"
@@ -270,4 +280,17 @@ EOT
       ]
     }
   }
+
+  # Conditionally select SCM secrets based on auth method
+  sdv_gcp_scm_secrets_map = (
+    var.scm_auth_method == "app" ? local.sdv_gcp_github_app_secrets_map :
+    var.scm_auth_method == "userpass" ? local.sdv_gcp_userpass_secrets_map :
+    {} # Empty map for "none" - no secrets needed for public repos
+  )
+
+  # Merge all secrets
+  sdv_gcp_secrets_map = merge(
+    local.sdv_gcp_common_secrets_map,
+    local.sdv_gcp_scm_secrets_map
+  )
 }

@@ -64,6 +64,6 @@ These are as follows:
 -   `HORIZON_GITHUB_URL`
     - The URL to the Horizon SDV GitHub repository.
 
--   `HORIZON_GITHUB_BRANCH`
+-   `HORIZON_SCM_BRANCH`
     - The branch name the job will be configured for from `HORIZON_GITHUB_URL`.
 
